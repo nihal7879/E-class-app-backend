@@ -63,6 +63,54 @@ router.get(
       [...mcq.params, subject],
     );
 
+    const [mcqChapterRows] = await pool.query<any[]>(
+      `SELECT mr.chapter AS chapter,
+              COUNT(*) AS mcqAttempts
+       FROM mcq_report mr
+       JOIN users u ON u.user_id = mr.user_id
+       ${mcq.where ? mcq.where + " AND " : " WHERE "}mr.subject = ?
+       GROUP BY mr.chapter`,
+      [...mcq.params, subject],
+    );
+
+    type ChapterRow = {
+      chapter: string;
+      videoViews: number;
+      videoWatchMs: number;
+      contents: number;
+      students: number;
+      mcqAttempts: number;
+    };
+    const chapterMap = new Map<string, ChapterRow>();
+    for (const r of chapterRows) {
+      const key = r.chapter ?? "";
+      chapterMap.set(key, {
+        chapter: key,
+        videoViews: Number(r.videoViews),
+        videoWatchMs: Number(r.videoWatchMs),
+        contents: Number(r.contents),
+        students: Number(r.students ?? 0),
+        mcqAttempts: 0,
+      });
+    }
+    for (const r of mcqChapterRows) {
+      const key = r.chapter ?? "";
+      if (!key) continue;
+      const existing = chapterMap.get(key);
+      if (existing) {
+        existing.mcqAttempts = Number(r.mcqAttempts);
+      } else {
+        chapterMap.set(key, {
+          chapter: key,
+          videoViews: 0,
+          videoWatchMs: 0,
+          contents: 0,
+          students: 0,
+          mcqAttempts: Number(r.mcqAttempts),
+        });
+      }
+    }
+
     res.json({
       subject,
       videoViews:     Number(summaryRows[0]?.videoViews ?? 0),
@@ -71,13 +119,7 @@ router.get(
       chapters:       Number(summaryRows[0]?.chapters ?? 0),
       mcqAttempts:    Number(mcqRows[0]?.mcqAttempts ?? 0),
       avgPercentage:  Number(mcqRows[0]?.avgPercentage ?? 0),
-      chapterBreakdown: chapterRows.map((r) => ({
-        chapter: r.chapter,
-        videoViews: Number(r.videoViews),
-        videoWatchMs: Number(r.videoWatchMs),
-        contents: Number(r.contents),
-        students: Number(r.students ?? 0),
-      })),
+      chapterBreakdown: [...chapterMap.values()],
     });
   }),
 );
