@@ -152,8 +152,11 @@ router.get(
     };
     const map = new Map<string, CourseBreakdown>();
     for (const r of courseSubjectRows) {
-      const course = r.course;
-      if (!course) continue;
+      // Bucket rows with a missing course under "(Unspecified)" rather than
+      // dropping them. Dropping them made the per-standard attempts sum to LESS
+      // than the "Score distribution (all attempts)" total (feedback #7), since
+      // the distribution counts every row. Keeping them keeps the two reconciled.
+      const course = r.course || "(Unspecified)";
       const subject = r.subject || "(Unspecified)";
       if (!map.has(course)) {
         map.set(course, {

@@ -194,6 +194,51 @@ router.get(
 );
 
 /**
+ * GET /api/schools/:school/subjects
+ * Subjects ranked by video watch time (learning hours) within a single school.
+ * Feeds the "Top subjects" list on the school detail page.
+ */
+router.get(
+  "/:school/subjects",
+  asyncHandler(async (req, res) => {
+    const filter = FilterQuerySchema.parse(req.query);
+    const school = decodeURIComponent(req.params.school);
+
+    const video = buildWhereClause({ ...filter, schools: [school] }, {
+      dateColumn: "vu.last_access_date",
+      schoolColumn: "u.school",
+      courseColumn: "vu.course",
+      divisionColumn: "u.division",
+      genderColumn: "u.gender",
+    });
+    const [rows] = await pool.query<any[]>(
+      `SELECT vu.subject AS subject,
+              COALESCE(SUM(TIME_TO_SEC(vu.total_view_duration)), 0) * 1000 AS watchMs,
+              COALESCE(SUM(vu.total_view_count), 0)                        AS views,
+              COUNT(DISTINCT vu.user_id)                                   AS students
+       FROM video_usage vu
+       JOIN users u ON u.user_id = vu.user_id
+       ${video.where}
+       GROUP BY vu.subject
+       ORDER BY watchMs DESC`,
+      video.params,
+    );
+
+    res.json({
+      school,
+      items: rows
+        .filter((r) => r.subject) // drop rows with no subject label
+        .map((r) => ({
+          subject: r.subject,
+          watchMs: Number(r.watchMs),
+          views: Number(r.views),
+          students: Number(r.students),
+        })),
+    });
+  }),
+);
+
+/**
  * GET /api/schools/:school/courses
  * Per-course breakdown within a single school.
  */
